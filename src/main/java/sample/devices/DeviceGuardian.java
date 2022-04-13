@@ -15,5 +15,4 @@ public class DeviceGuardian {
       return Behaviors.empty();
     });
   }
-
 }

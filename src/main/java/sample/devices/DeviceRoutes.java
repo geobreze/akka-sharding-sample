@@ -1,11 +1,9 @@
 package sample.devices;
 
 import static akka.http.javadsl.server.Directives.complete;
-import static akka.http.javadsl.server.Directives.completeOKWithFuture;
 import static akka.http.javadsl.server.Directives.concat;
 import static akka.http.javadsl.server.Directives.delete;
 import static akka.http.javadsl.server.Directives.onSuccess;
-import static akka.http.javadsl.server.Directives.parameter;
 import static akka.http.javadsl.server.Directives.path;
 import static akka.http.javadsl.server.Directives.post;
 import static akka.http.javadsl.server.PathMatchers.segment;
@@ -40,15 +38,15 @@ public class DeviceRoutes {
   }
 
   public Route device() {
-      return path(segment("device").slash().concat(segment()), deviceId ->
-          concat(
-              post(() ->
-                  onSuccess(start(deviceId), performed -> complete(StatusCodes.ACCEPTED, "started device " + deviceId))
-              ),
-              delete(() ->
-                  onSuccess(stop(deviceId), performed -> complete(StatusCodes.ACCEPTED, "stopped device " + deviceId))
-              )
-          )
-      );
-    }
+    return path(segment("device").slash().concat(segment()), deviceId ->
+        concat(
+            post(() ->
+                onSuccess(start(deviceId), performed -> complete(StatusCodes.ACCEPTED, "started device " + deviceId))
+            ),
+            delete(() ->
+                onSuccess(stop(deviceId), performed -> complete(StatusCodes.ACCEPTED, "stopped device " + deviceId))
+            )
+        )
+    );
+  }
 }

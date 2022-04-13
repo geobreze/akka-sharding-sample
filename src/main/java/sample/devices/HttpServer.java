@@ -1,5 +1,10 @@
 package sample.devices;
 
+import static akka.Done.done;
+
+import java.net.InetSocketAddress;
+import java.time.Duration;
+
 import akka.actor.CoordinatedShutdown;
 import akka.actor.typed.ActorSystem;
 import akka.actor.typed.javadsl.Adapter;
@@ -8,11 +13,6 @@ import akka.http.javadsl.Http;
 import akka.http.javadsl.server.Route;
 import akka.stream.Materializer;
 import akka.stream.SystemMaterializer;
-
-import java.net.InetSocketAddress;
-import java.time.Duration;
-
-import static akka.Done.done;
 
 final class HttpServer {
 
@@ -37,13 +37,13 @@ final class HttpServer {
             CoordinatedShutdown.PhaseServiceRequestsDone(),
             "http-graceful-terminate",
             () ->
-              binding.terminate(Duration.ofSeconds(10)).thenApply(terminated -> {
-                system.log().info( "WeatherServer http://{}:{}/ graceful shutdown completed",
-                    address.getHostString(),
-                    address.getPort()
-                );
-                return done();
-              })
+                binding.terminate(Duration.ofSeconds(10)).thenApply(terminated -> {
+                  system.log().info("WeatherServer http://{}:{}/ graceful shutdown completed",
+                      address.getHostString(),
+                      address.getPort()
+                  );
+                  return done();
+                })
         );
       } else {
         system.log().error("Failed to bind HTTP endpoint, terminating system", failure);

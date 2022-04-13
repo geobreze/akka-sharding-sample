@@ -25,10 +25,80 @@ public class DeviceSim
 
   public static final EntityTypeKey<DeviceSim.Command> TypeKey =
       EntityTypeKey.create(DeviceSim.Command.class, "DeviceSim");
+  private final String deviceId;
+  private final ActorContext<Command> context;
+  private final RunningHandler runningHandler = new RunningHandler();
+  private final IdleHandler idleHandler = new IdleHandler();
+
+  private DeviceSim(ActorContext<Command> context, String deviceId) {
+    super(PersistenceId.of("Device", deviceId),
+        SupervisorStrategy.restartWithBackoff(Duration.ofMillis(200), Duration.ofSeconds(5), 0.1));
+    this.context = context;
+    this.deviceId = deviceId;
+  }
 
   public static void initSharding(ActorSystem<?> system) {
     ClusterSharding.get(system)
         .init(Entity.of(TypeKey, entityContext -> DeviceSim.create(entityContext.getEntityId())));
+  }
+
+  public static Behavior<Command> create(String deviceId) {
+    return Behaviors.setup(context -> {
+      context.getSelf().tell(new Tick());
+      return new DeviceSim(context, deviceId);
+    });
+  }
+
+  @Override
+  public State emptyState() {
+    return new State();
+  }
+
+  @Override
+  public CommandHandler<Command, Event, State> commandHandler() {
+    CommandHandlerBuilder<Command, Event, State> b =
+        newCommandHandlerBuilder();
+
+    b.forState(state -> state.getState() == 0)
+        .onCommand(Tick.class, idleHandler::tick)
+        .onCommand(Start.class, idleHandler::onStart)
+        .onCommand(Stop.class, idleHandler::onStop);
+
+    b.forState(state -> state.getState() == 1)
+        .onCommand(Tick.class, runningHandler::tick)
+        .onCommand(Start.class, runningHandler::onStart)
+        .onCommand(Stop.class, runningHandler::onStop);
+
+    return b.build();
+  }
+
+  @Override
+  public EventHandler<State, Event> eventHandler() {
+    return newEventHandlerBuilder().forAnyState()
+        .onEvent(DeviceStarted.class, (state, event) -> {
+          context.getLog().info("Changing state to running {}", deviceId);
+          return state.setState(1);
+        })
+        .onEvent(DeviceStopped.class, (state, event) -> {
+          context.getLog().info("Changing state to stopped {}", deviceId);
+          return state.setState(0);
+        })
+        .build();
+  }
+
+  @Override
+  public RetentionCriteria retentionCriteria() {
+    // enable snapshotting
+    return RetentionCriteria.snapshotEvery(5, 3);
+  }
+
+  /**
+   * This interface defines all the commands that the persistent actor supports.
+   */
+  public interface Command extends CborSerializable {
+  }
+
+  public interface Event extends CborSerializable {
   }
 
   /**
@@ -37,20 +107,14 @@ public class DeviceSim
   public static class State implements CborSerializable {
     private int state = 0; // 0 - stopped, 1 - running
 
+    public int getState() {
+      return state;
+    }
+
     public State setState(int i) {
       this.state = i;
       return this;
     }
-
-    public int getState() {
-      return state;
-    }
-  }
-
-  /**
-   * This interface defines all the commands that the persistent actor supports.
-   */
-  public interface Command extends CborSerializable {
   }
 
   public static class Started implements CborSerializable {
@@ -93,9 +157,6 @@ public class DeviceSim
 
   }
 
-  public interface Event extends CborSerializable {
-  }
-
   public static class DeviceStarted implements Event {
     public final String deviceId;
 
@@ -112,49 +173,6 @@ public class DeviceSim
     public DeviceStopped(String deviceId) {
       this.deviceId = deviceId;
     }
-  }
-
-  public static Behavior<Command> create(String deviceId) {
-    return Behaviors.setup(context -> {
-      context.getSelf().tell(new Tick());
-      return new DeviceSim(context, deviceId);
-    });
-  }
-
-  private final String deviceId;
-  private final ActorContext<Command> context;
-
-  private DeviceSim(ActorContext<Command> context, String deviceId) {
-    super(PersistenceId.of("Device", deviceId),
-        SupervisorStrategy.restartWithBackoff(Duration.ofMillis(200), Duration.ofSeconds(5), 0.1));
-    this.context = context;
-    this.deviceId = deviceId;
-  }
-
-  @Override
-  public State emptyState() {
-    return new State();
-  }
-
-  private final RunningHandler runningHandler = new RunningHandler();
-  private final IdleHandler idleHandler = new IdleHandler();
-
-  @Override
-  public CommandHandler<Command, Event, State> commandHandler() {
-    CommandHandlerBuilder<Command, Event, State> b =
-        newCommandHandlerBuilder();
-
-    b.forState(state -> state.getState() == 0)
-        .onCommand(Tick.class, idleHandler::tick)
-        .onCommand(Start.class, idleHandler::onStart)
-        .onCommand(Stop.class, idleHandler::onStop);
-
-    b.forState(state -> state.getState() == 1)
-        .onCommand(Tick.class, runningHandler::tick)
-        .onCommand(Start.class, runningHandler::onStart)
-        .onCommand(Stop.class, runningHandler::onStop);
-
-    return b.build();
   }
 
   private class IdleHandler {
@@ -198,25 +216,5 @@ public class DeviceSim
       return Effect().persist(new DeviceStopped(deviceId))
           .thenReply(stop.replyTo, newState -> new Stopped());
     }
-  }
-
-  @Override
-  public EventHandler<State, Event> eventHandler() {
-    return newEventHandlerBuilder().forAnyState()
-        .onEvent(DeviceStarted.class, (state, event) -> {
-          context.getLog().info("Changing state to running {}", deviceId);
-          return state.setState(1);
-        })
-        .onEvent(DeviceStopped.class, (state, event) -> {
-          context.getLog().info("Changing state to stopped {}", deviceId);
-          return state.setState(0);
-        })
-        .build();
-  }
-
-  @Override
-  public RetentionCriteria retentionCriteria() {
-    // enable snapshotting
-    return RetentionCriteria.snapshotEvery(5, 3);
   }
 }
